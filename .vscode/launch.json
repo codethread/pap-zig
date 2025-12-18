@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Day 01 Tests",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceRoot}/zig-out/test-day01",
+            "args": [],
+            "cwd": "${workspaceRoot}",
+            "preLaunchTask": "build-test-day01"
+        },
+        {
+            "name": "Debug Day 02 Tests",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceRoot}/zig-out/test-day02",
+            "args": [],
+            "cwd": "${workspaceRoot}",
+            "preLaunchTask": "build-test-day02"
+        },
+        {
+            "name": "Debug All Tests",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceRoot}/zig-out/test-all",
+            "args": [],
+            "cwd": "${workspaceRoot}",
+            "preLaunchTask": "build-test-all"
+        }
+    ]
+}

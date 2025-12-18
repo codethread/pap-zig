@@ -1,0 +1,44 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-test-day01",
+            "type": "shell",
+            "command": "zig",
+            "args": [
+                "test",
+                "src/day01/solution.zig",
+                "--test-no-exec",
+                "-femit-bin=zig-out/test-day01"
+            ],
+            "problemMatcher": [],
+            "group": "build"
+        },
+        {
+            "label": "build-test-day02",
+            "type": "shell",
+            "command": "zig",
+            "args": [
+                "test",
+                "src/day02/solution.zig",
+                "--test-no-exec",
+                "-femit-bin=zig-out/test-day02"
+            ],
+            "problemMatcher": [],
+            "group": "build"
+        },
+        {
+            "label": "build-test-all",
+            "type": "shell",
+            "command": "zig",
+            "args": [
+                "build",
+                "test",
+                "--summary",
+                "all"
+            ],
+            "problemMatcher": [],
+            "group": "build"
+        }
+    ]
+}

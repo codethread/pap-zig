@@ -27,6 +27,13 @@ pub fn build(b: *std.Build) void {
     // Test discovery: automatically find all solution.zig files in src/day* directories
     const test_step = b.step("test", "Run all task tests");
 
+    // Create utils module for sharing across tasks
+    const utils_module = b.createModule(.{
+        .root_source_file = b.path("src/utils.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     // Add tests for each task
     const tasks = [_][]const u8{
         "day01",
@@ -42,6 +49,9 @@ pub fn build(b: *std.Build) void {
                 .optimize = optimize,
             }),
         });
+
+        // Make utils module available to each task
+        task_test.root_module.addImport("utils", utils_module);
 
         const run_task_test = b.addRunArtifact(task_test);
         test_step.dependOn(&run_task_test.step);

@@ -1,4 +1,5 @@
 const std = @import("std");
+const utils = @import("utils");
 
 const BYTE_REG_FIELD = [_][]const u8{
     "al", // 000
@@ -22,10 +23,10 @@ const WORD_REG_FIELD = [_][]const u8{
     "di", // 111
 };
 
-inline fn wBit(byte: u8) bool {
+inline fn getWBit(byte: u8) bool {
     return (byte & 0b1) == 1;
 }
-inline fn modField(byte: u8) u8 {
+inline fn getModField(byte: u8) u8 {
     return byte >> 6;
 }
 inline fn rmField(byte: u8) u8 {
@@ -36,6 +37,8 @@ inline fn regField2(byte: u8) u8 {
 }
 
 pub fn solve(writer: *std.Io.Writer, input: []const u8) !void {
+    try writer.print("bits 16\n", .{});
+
     var i: u32 = 0;
 
     while (i < input.len) {
@@ -46,12 +49,12 @@ pub fn solve(writer: *std.Io.Writer, input: []const u8) !void {
             // register to/from register
             0b10001000...0b10001011 => {
                 // const d = byte >> 1 & 0b1 == 1;
-                const w = wBit(byte);
+                const w = getWBit(byte);
 
                 // get next byte
                 i += 1;
                 const byte_2 = input[i];
-                const mod_byte = modField(byte_2);
+                const mod_byte = getModField(byte_2);
                 const reg_byte = regField2(byte_2);
                 const rm_byte = rmField(byte_2);
 
@@ -82,7 +85,7 @@ const test_allocator = std.testing.allocator;
 
 test "day01 single" {
     const input = @embedFile("0037_single");
-    const expected = clean_asm(@embedFile("0037_single.asm"));
+    const expected = utils.clean_input_file(@embedFile("0037_single.asm"));
 
     var list = try std.Io.Writer.Allocating.initCapacity(test_allocator, 1048);
     defer list.deinit();
@@ -94,7 +97,7 @@ test "day01 single" {
 
 test "day01 multi" {
     const input = @embedFile("0038_multiple");
-    const expected = clean_asm(@embedFile("0038_multiple.asm"));
+    const expected = utils.clean_input_file(@embedFile("0038_multiple.asm"));
 
     var list = try std.Io.Writer.Allocating.initCapacity(test_allocator, 1048);
     defer list.deinit();
@@ -102,18 +105,4 @@ test "day01 multi" {
     try solve(&list.writer, input);
 
     try std.testing.expectEqualStrings(expected, list.writer.buffer[0..list.writer.end]);
-}
-
-pub fn clean_asm(comptime input: []const u8) []const u8 {
-    @setEvalBranchQuota(10000);
-    const marker = "bits 16\n\n";
-    const data = comptime blk: {
-        const idx = std.mem.indexOf(u8, input, marker) orelse @compileError("missing marker");
-        const ex = input[(idx + marker.len)..];
-        const sz = std.mem.replacementSize(u8, ex, "\n\n", "\n");
-        var buff: [sz]u8 = undefined;
-        _ = std.mem.replace(u8, ex, "\n\n", "\n", buff[0..]);
-        break :blk buff;
-    };
-    return &data;
 }

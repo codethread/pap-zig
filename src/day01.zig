@@ -1,5 +1,5 @@
 const std = @import("std");
-const utils = @import("utils");
+const utils = @import("utils.zig");
 
 const BYTE_REG_FIELD = [_][]const u8{
     "al", // 000
@@ -36,6 +36,8 @@ inline fn regField2(byte: u8) u8 {
     return byte >> 3 & 0b111;
 }
 
+const errs = error{Unimplimented};
+
 pub fn solve(writer: *std.Io.Writer, input: []const u8) !void {
     try writer.print("bits 16\n", .{});
 
@@ -68,13 +70,13 @@ pub fn solve(writer: *std.Io.Writer, input: []const u8) !void {
             },
             // immidiate to register/memory
             0b1100001, 0b11000111 => {
-                @panic("noop");
+                return errs.Unimplimented;
             },
             // immidiate to register
             0b1011000, 0b1011111 => {
-                @panic("noop");
+                return errs.Unimplimented;
             },
-            else => @panic("noop"),
+            else => return errs.Unimplimented,
         }
 
         i += 1;
@@ -83,26 +85,35 @@ pub fn solve(writer: *std.Io.Writer, input: []const u8) !void {
 
 const test_allocator = std.testing.allocator;
 
-test "day01 single" {
-    const input = @embedFile("0037_single");
-    const expected = utils.clean_input_file(@embedFile("0037_single.asm"));
+const tests = .{
+    "assets/0037_single",
+    "assets/0038_multiple",
+    "assets/0039_more_moves",
+};
 
-    var list = try std.Io.Writer.Allocating.initCapacity(test_allocator, 1048);
-    defer list.deinit();
-
-    try solve(&list.writer, input);
-
-    try std.testing.expectEqualStrings(expected, list.writer.buffer[0..list.writer.end]);
+test solve {
+    comptime { // we can even define cases using comptime metaprogramming
+        for (.{
+            "assets/0037_single",
+            "assets/0038_multiple",
+            "assets/0039_more_moves",
+        }) |case| {
+            _ = TestDissasembler(case);
+        }
+    }
 }
 
-test "day01 multi" {
-    const input = @embedFile("0038_multiple");
-    const expected = utils.clean_input_file(@embedFile("0038_multiple.asm"));
+fn TestDissasembler(comptime case: []const u8) type {
+    return struct {
+        test {
+            const input = @embedFile(case);
+            const expected = utils.clean_input_file(@embedFile(case ++ ".asm"));
 
-    var list = try std.Io.Writer.Allocating.initCapacity(test_allocator, 1048);
-    defer list.deinit();
+            var list = try std.Io.Writer.Allocating.initCapacity(test_allocator, expected.len * 4);
+            defer list.deinit();
 
-    try solve(&list.writer, input);
-
-    try std.testing.expectEqualStrings(expected, list.writer.buffer[0..list.writer.end]);
+            try solve(&list.writer, input);
+            try std.testing.expectEqualStrings(expected, list.writer.buffer[0..list.writer.end]);
+        }
+    };
 }

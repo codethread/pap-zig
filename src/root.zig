@@ -5,6 +5,6 @@ pub fn greet() void {
 }
 
 test {
-    _ = @import("day01.zig");
-    _ = @import("day02.zig");
+    _ = @import("part1.zig");
+    _ = @import("part2.zig");
 }

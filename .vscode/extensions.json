@@ -1,0 +1,7 @@
+{
+  "recommendations": [
+    "ms-vscode.hexeditor",
+    "ziglang.vscode-zig",
+    "vadimcn.vscode-lldb"
+  ]
+}

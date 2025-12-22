@@ -12,7 +12,12 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "pap_zig",
-        .root_module = b.createModule(.{ .root_source_file = b.path("src/main.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "pap", .module = mod }} }),
+        .root_module = b.createModule(.{ //
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "pap", .module = mod }},
+        }),
     });
 
     b.installArtifact(exe);

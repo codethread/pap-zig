@@ -10,17 +10,26 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const exe_mod = b.createModule(.{ //
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "pap", .module = mod }},
+    });
+
     const exe = b.addExecutable(.{
         .name = "pap_zig",
-        .root_module = b.createModule(.{ //
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{.{ .name = "pap", .module = mod }},
-        }),
+        .root_module = exe_mod,
     });
 
     b.installArtifact(exe);
+
+    const mod_check = b.addExecutable(.{
+        .name = "pap_zig",
+        .root_module = exe_mod,
+    });
+    const check = b.step("check", "Check if pap compiles");
+    check.dependOn(&mod_check.step);
 
     const run_step = b.step("run", "Run the app");
     const run_cmd = b.addRunArtifact(exe);

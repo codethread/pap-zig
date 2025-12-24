@@ -115,8 +115,7 @@ pub fn disassemble(allocator: std.mem.Allocator, binary_bytes: []const u8) ![]co
                 try writer.print("mov {s}, {s}\n", operands);
             },
             // immediate to register/memory
-            0b1100001, 0b11000111 => {
-                std.debug.print("unexpected byte {b}", .{byte});
+            0b11000110...0b11000111 => {
                 return DisassembleError.Unimplemented;
             },
             // immediate to register

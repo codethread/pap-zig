@@ -1,184 +1,166 @@
 const std = @import("std");
 const utils = @import("utils.zig");
 
-const BYTE_REG_FIELD = [_][]const u8{
-    "al", // 000
-    "cl", // 001
-    "dl", // 010
-    "bl", // 011
-    "ah", // 100
-    "ch", // 101
-    "dh", // 110
-    "bh", // 111
+/// Register lookup tables indexed by the 3-bit REG/R/M field.
+const Register = struct {
+    const byte = [_][]const u8{ "al", "cl", "dl", "bl", "ah", "ch", "dh", "bh" };
+    const word = [_][]const u8{ "ax", "cx", "dx", "bx", "sp", "bp", "si", "di" };
+
+    fn get(index: u3, wide: bool) []const u8 {
+        return if (wide) word[index] else byte[index];
+    }
 };
 
-const WORD_REG_FIELD = [_][]const u8{
-    "ax", // 000
-    "cx", // 001
-    "dx", // 010
-    "bx", // 011
-    "sp", // 100
-    "bp", // 101
-    "si", // 110
-    "di", // 111
+/// Effective address calculation base components indexed by R/M field.
+const effective_address_base = [_][]const u8{
+    "bx + si", // 000
+    "bx + di", // 001
+    "bp + si", // 010
+    "bp + di", // 011
+    "si", // 100
+    "di", // 101
+    "bp", // 110
+    "bx", // 111
 };
 
-inline fn getWBit(byte: u8) bool {
+/// Decoded fields from MOD-REG-R/M byte.
+const ModRegRm = struct {
+    mod: u2,
+    reg: u3,
+    rm: u3,
+
+    fn decode(byte: u8) ModRegRm {
+        return .{
+            .mod = @truncate(byte >> 6),
+            .reg = @truncate(byte >> 3),
+            .rm = @truncate(byte),
+        };
+    }
+};
+
+/// Extract the W (wide) bit from instruction byte.
+fn isWide(byte: u8) bool {
     return (byte & 0b1) == 1;
 }
-inline fn getModField(byte: u8) u8 {
-    return byte >> 6;
-}
-inline fn rmField(byte: u8) u8 {
-    return byte & 0b111;
-}
-inline fn regField1(byte: u8) u8 {
-    return byte & 0b111;
-}
-inline fn regField2(byte: u8) u8 {
-    return byte >> 3 & 0b111;
-}
 
-const errs = error{Unimplimented};
+const DisassembleError = error{Unimplemented};
 
-/// dissasemble 16 bit 8086 instruction set, returns owned slice
-pub fn dissasemble(allocator: std.mem.Allocator, binary_bytes: []const u8) ![]const u8 {
+/// Disassemble 16-bit 8086 instruction set, returns owned slice.
+pub fn disassemble(allocator: std.mem.Allocator, binary_bytes: []const u8) ![]const u8 {
     var list = try std.Io.Writer.Allocating.initCapacity(allocator, binary_bytes.len * 4);
     errdefer list.deinit();
     const writer = &list.writer;
 
     try writer.print("bits 16\n", .{});
 
-    var i: u32 = 0;
-    // line number purely to help debug the asm line under test
-    var ln: u8 = 0;
-
-    while (i < binary_bytes.len) : ({
-        i += 1;
-        ln += 1;
-    }) {
+    var i: usize = 0;
+    while (i < binary_bytes.len) : (i += 1) {
         const byte = binary_bytes[i];
 
         switch (byte) {
             // mov
             // register to/from register
             0b10001000...0b10001011 => {
-                const direction = byte >> 1 & 0b1 == 1;
-                const w = getWBit(byte);
+                const reg_is_dest = (byte >> 1 & 0b1) == 1;
+                const wide = isWide(byte);
 
-                // get next byte
                 i += 1;
-                const byte_2 = binary_bytes[i];
-                var mod_byte = getModField(byte_2);
-                const reg_byte = regField2(byte_2);
-                const rm_byte = rmField(byte_2);
+                const modrm = ModRegRm.decode(binary_bytes[i]);
 
-                var scratch = std.heap.ArenaAllocator.init(allocator);
-                defer scratch.deinit();
-                const scratch_alloc = scratch.allocator();
+                const reg_name = Register.get(modrm.reg, wide);
+                const rm_name = Register.get(modrm.rm, wide);
 
-                const reg_field = if (w) WORD_REG_FIELD[reg_byte] else BYTE_REG_FIELD[reg_byte];
-                const rm_field = if (w) WORD_REG_FIELD[rm_byte] else BYTE_REG_FIELD[rm_byte];
-
-                if (mod_byte == 0b11) {
-                    try writer.print("mov {s}, {s}\n", if (direction) .{ reg_field, rm_field } else .{ rm_field, reg_field });
+                // Register-to-register mode (mod = 11)
+                if (modrm.mod == 0b11) {
+                    const operands = if (reg_is_dest) .{ reg_name, rm_name } else .{ rm_name, reg_name };
+                    try writer.print("mov {s}, {s}\n", operands);
                     continue;
                 }
 
-                // cheeky
-                if (rm_byte == 0b110 and mod_byte == 0) {
-                    mod_byte = 0b10;
-                    @panic("ah");
+                // Direct address special case (mod=00, rm=110)
+                if (modrm.rm == 0b110 and modrm.mod == 0) {
+                    @panic("direct address mode not yet implemented");
                 }
 
-                const disp = disp_bk: {
-                    const disp_data: ?u16 = bk: switch (mod_byte) {
-                        0b01 => {
-                            i += 1;
-                            break :bk binary_bytes[i];
-                        },
-                        0b10 => {
-                            i += 1;
-                            defer i += 1;
-                            break :bk std.mem.readInt(u16, binary_bytes[i .. i + 2][0..2], .little);
-                        },
-                        else => null,
-                    };
-                    const fmt = " + {d}";
-                    var buf: [16 + fmt.len]u8 = undefined;
-                    var disp_list = std.ArrayList(u8).initBuffer(&buf);
-
-                    if (disp_data) |d| {
-                        if (d != 0) try disp_list.printBounded(" + {d}", .{d});
-                    } else try disp_list.printBounded("", .{});
-                    break :disp_bk disp_list.items;
+                // Read displacement based on mod field
+                const displacement: ?u16 = switch (modrm.mod) {
+                    0b00 => null,
+                    0b01 => blk: {
+                        i += 1;
+                        break :blk binary_bytes[i];
+                    },
+                    0b10 => blk: {
+                        i += 1;
+                        defer i += 1;
+                        break :blk std.mem.readInt(u16, binary_bytes[i..][0..2], .little);
+                    },
+                    0b11 => unreachable, // handled above
                 };
 
-                const rm_operand = try switch (rm_byte) {
-                    0b000 => std.fmt.allocPrint(scratch_alloc, "[bx + si{s}]", .{disp}),
-                    0b001 => std.fmt.allocPrint(scratch_alloc, "[bx + di{s}]", .{disp}),
-                    0b010 => std.fmt.allocPrint(scratch_alloc, "[bp + si{s}]", .{disp}),
-                    0b011 => std.fmt.allocPrint(scratch_alloc, "[bp + di{s}]", .{disp}),
-                    0b100 => std.fmt.allocPrint(scratch_alloc, "[si{s}]", .{disp}),
-                    0b101 => std.fmt.allocPrint(scratch_alloc, "[di{s}]", .{disp}),
-                    0b110 => std.fmt.allocPrint(scratch_alloc, "[bp{s}]", .{disp}),
-                    0b111 => std.fmt.allocPrint(scratch_alloc, "[{s}{s}]", .{ rm_field, disp }),
-                    else => @panic("not u3"),
-                };
+                // Format displacement suffix
+                var disp_buf: [16]u8 = undefined;
+                const disp_str = if (displacement) |d|
+                    if (d != 0) std.fmt.bufPrint(&disp_buf, " + {d}", .{d}) catch unreachable else ""
+                else
+                    "";
 
-                try writer.print("mov {s}, {s}\n", if (direction) .{ reg_field, rm_operand } else .{ rm_operand, reg_field });
+                // Format effective address
+                var addr_buf: [32]u8 = undefined;
+                const rm_operand = std.fmt.bufPrint(&addr_buf, "[{s}{s}]", .{
+                    effective_address_base[modrm.rm],
+                    disp_str,
+                }) catch unreachable;
+
+                const operands = if (reg_is_dest) .{ reg_name, rm_operand } else .{ rm_operand, reg_name };
+                try writer.print("mov {s}, {s}\n", operands);
             },
-            // immidiate to register/memory
+            // immediate to register/memory
             0b1100001, 0b11000111 => {
                 std.debug.print("unexpected byte {b}", .{byte});
-                return errs.Unimplimented;
+                return DisassembleError.Unimplemented;
             },
-            // immidiate to register
+            // immediate to register
             0b10110000...0b10111111 => {
-                const w = byte >> 3 & 0b1 == 1;
-                const reg_byte = regField1(byte);
+                const wide = (byte >> 3 & 0b1) == 1;
+                const reg: u3 = @truncate(byte);
                 i += 1;
-                const dest = if (w) WORD_REG_FIELD[reg_byte] else BYTE_REG_FIELD[reg_byte];
 
-                const ImmediateValue = union(enum) {
-                    byte: u8,
-                    word: u16,
+                const dest = Register.get(reg, wide);
+                const immediate: i16 = if (wide) blk: {
+                    defer i += 1;
+                    break :blk @bitCast(std.mem.readInt(u16, binary_bytes[i..][0..2], .little));
+                } else blk: {
+                    // Sign-extend byte to i16 for consistent formatting
+                    const val = binary_bytes[i];
+                    break :blk if (val > 127) @as(i8, @bitCast(val)) else val;
                 };
 
-                const src = bk: {
-                    const immediate = if (w) ImmediateValue{
-                        .word = blk: {
-                            defer i += 1;
-                            break :blk std.mem.readInt(u16, binary_bytes[i .. i + 2][0..2], .little);
-                        },
-                    } else ImmediateValue{
-                        .byte = binary_bytes[i],
-                    };
-
-                    var buf: [6]u8 = undefined;
-                    const formatted = switch (immediate) {
-                        .byte => |val| blk: {
-                            const signed = if (val > std.math.maxInt(u8) / 2)
-                                @as(i8, @bitCast(val))
-                            else
-                                @as(i16, val);
-                            break :blk try std.fmt.bufPrint(&buf, "{d}", .{signed});
-                        },
-                        .word => |val| blk: {
-                            const signed = if (val > std.math.maxInt(u16) / 2)
-                                @as(i16, @bitCast(val))
-                            else
-                                @as(i16, @bitCast(val));
-                            break :blk try std.fmt.bufPrint(&buf, "{d}", .{signed});
-                        },
-                    };
-                    break :bk formatted;
+                try writer.print("mov {s}, {d}\n", .{ dest, immediate });
+            },
+            // Memory to accumulator
+            0b10100000...0b10100011 => {
+                const wide = isWide(byte);
+                i += 1;
+                const memory: i16 = if (wide) blk: {
+                    defer i += 1;
+                    break :blk @bitCast(std.mem.readInt(u16, binary_bytes[i..][0..2], .little));
+                } else blk: {
+                    // Sign-extend byte to i16 for consistent formatting
+                    const val = binary_bytes[i];
+                    break :blk if (val > 127) @as(i8, @bitCast(val)) else val;
                 };
-                try writer.print("mov {s}, {s}\n", .{ dest, src });
+
+                const is_to: bool = brk: {
+                    const s: u1 = @truncate(byte >> 1);
+                    break :brk s == 1;
+                };
+
+                try if (is_to) writer.print("mov ax, [{d}]\n", .{memory}) //
+                else writer.print("mov [{d}], ax\n", .{memory});
             },
             else => {
-                std.debug.print("unexpected byte {b}", .{byte});
-                return errs.Unimplimented;
+                std.debug.print("unexpected byte {b}\n", .{byte});
+                return DisassembleError.Unimplemented;
             },
         }
     }
@@ -188,25 +170,26 @@ pub fn dissasemble(allocator: std.mem.Allocator, binary_bytes: []const u8) ![]co
 
 const test_allocator = std.testing.allocator;
 
-test dissasemble {
+test disassemble {
     comptime {
         for (.{
             "assets/0037_single",
             "assets/0038_multiple",
             "assets/0039_more_moves",
+            // "assets/0040_challenge_moves",
         }) |case| {
-            _ = TestDissasembler(case);
+            _ = TestDisassembler(case);
         }
     }
 }
 
-fn TestDissasembler(comptime case: []const u8) type {
+fn TestDisassembler(comptime case: []const u8) type {
     return struct {
         test {
             const input = @embedFile(case);
             const expected = utils.clean_input_file(@embedFile(case ++ ".asm"));
 
-            const result = try dissasemble(test_allocator, input);
+            const result = try disassemble(test_allocator, input);
             defer test_allocator.free(result);
             errdefer {
                 std.debug.print("\nDecoded:\n{s}", .{result});

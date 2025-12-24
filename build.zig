@@ -24,12 +24,12 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
-    const mod_check = b.addExecutable(.{
+    const check = b.step("check", "Check if pap compiles");
+    const exe_check = b.addExecutable(.{
         .name = "pap_zig",
         .root_module = exe_mod,
     });
-    const check = b.step("check", "Check if pap compiles");
-    check.dependOn(&mod_check.step);
+    check.dependOn(&exe_check.step);
 
     const run_step = b.step("run", "Run the app");
     const run_cmd = b.addRunArtifact(exe);

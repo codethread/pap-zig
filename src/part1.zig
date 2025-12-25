@@ -172,10 +172,10 @@ const test_allocator = std.testing.allocator;
 test disassemble {
     comptime {
         for (.{
-            "assets/0037_single",
-            "assets/0038_multiple",
-            "assets/0039_more_moves",
-            // "assets/0040_challenge_moves",
+            "0037_single",
+            "0038_multiple",
+            "0039_more_moves",
+            // "0040_challenge_moves",
         }) |case| {
             _ = TestDisassembler(case);
         }
@@ -186,7 +186,7 @@ fn TestDisassembler(comptime case: []const u8) type {
     return struct {
         test {
             const input = @embedFile(case);
-            const expected = utils.clean_input_file(@embedFile(case ++ ".asm"));
+            const expected = utils.clean_input_file(@embedFile("assets/" ++ case ++ ".asm"));
 
             const result = try disassemble(test_allocator, input);
             defer test_allocator.free(result);
